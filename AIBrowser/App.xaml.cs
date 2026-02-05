@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks; // 【新增】必须加这个，用于后台监听信号
 using System.Windows; // 只保留 WPF 的命名空间，去掉 Forms
 using System.IO;
 
@@ -14,6 +15,10 @@ namespace AIBrowser
         // ==========================================
 
         private static Mutex? _mutex;
+
+        // 【新增】用于进程间通信的事件句柄（"自动唤醒"功能的关键）
+        private static EventWaitHandle? _eventWaitHandle;
+        private const string UniqueEventName = "AIBrowser_BringToFront_Event";
 
         // 【修复2】使用全名引用 WinForms 的 NotifyIcon，不引用整个命名空间
         private System.Windows.Forms.NotifyIcon? _notifyIcon;
@@ -35,11 +40,28 @@ namespace AIBrowser
 
             if (!createdNew)
             {
-                // 【修复4】显式指定使用 WPF 的 MessageBox
-                System.Windows.MessageBox.Show("AIBrowser 已经在运行中！\n请查看系统托盘区域。", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                // ==========================================================
+                // 【核心修改】这里不再弹窗，而是唤醒已有实例并退出自己
+                // ==========================================================
+                try
+                {
+                    // 尝试找到已经存在的那个“信号接收器”
+                    using (var eventHandle = EventWaitHandle.OpenExisting(UniqueEventName))
+                    {
+                        eventHandle.Set(); // 发送“唤醒”信号！
+                    }
+                }
+                catch
+                {
+                    // 忽略异常（比如极罕见情况老程序刚好崩溃了），确保自己静默退出
+                }
+
                 Environment.Exit(0);
                 return;
             }
+
+            // 【新增】如果是第一个实例，启动后台监听，等待被唤醒
+            InitSignalListener();
 
             base.OnStartup(e);
 
@@ -55,6 +77,31 @@ namespace AIBrowser
 
             // 5. 显示主窗口
             ShowMainWindow();
+        }
+
+        // ==========================================
+        // 【新增】后台监听唤醒信号的方法
+        // ==========================================
+        private void InitSignalListener()
+        {
+            // 创建一个全局事件，"false"表示初始无信号，"AutoReset"表示收到信号后自动重置
+            _eventWaitHandle = new EventWaitHandle(false, EventResetMode.AutoReset, UniqueEventName);
+
+            // 开启一个长期运行的后台任务一直等信号
+            Task.Factory.StartNew(() =>
+            {
+                while (true)
+                {
+                    // 程序会卡在这一行，直到有新实例运行并执行了 .Set()
+                    _eventWaitHandle.WaitOne();
+
+                    // 收到信号后，必须回到 UI 线程操作窗口
+                    Dispatcher.Invoke(() =>
+                    {
+                        ShowMainWindow();
+                    });
+                }
+            }, TaskCreationOptions.LongRunning);
         }
 
         // ==========================================
@@ -110,9 +157,19 @@ namespace AIBrowser
             }
             else
             {
+                // 【增强】如果窗口被最小化了，先还原
+                if (MainWindow.WindowState == WindowState.Minimized)
+                {
+                    MainWindow.WindowState = WindowState.Normal;
+                }
+
                 MainWindow.Show();
-                MainWindow.WindowState = WindowState.Normal;
+
+                // 【增强】强制激活并置顶（防止被其他窗口遮挡）
                 MainWindow.Activate();
+                MainWindow.Topmost = true;
+                MainWindow.Topmost = false;
+                MainWindow.Focus();
             }
         }
 
@@ -164,6 +221,9 @@ namespace AIBrowser
                 try { _mutex.ReleaseMutex(); } catch { }
                 _mutex.Close();
             }
+
+            // 【新增】退出时关闭事件句柄
+            _eventWaitHandle?.Close();
 
             base.OnExit(e);
         }
