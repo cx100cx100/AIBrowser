@@ -1,0 +1,8 @@
+﻿<Window x:Class="AIBrowser.PopupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="新窗口" Height="600" Width="900"
+        WindowStartupLocation="CenterOwner">
+    <wv2:WebView2 x:Name="PopupWebView"/>
+</Window>

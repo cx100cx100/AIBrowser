@@ -1,0 +1,53 @@
+﻿<Window x:Class="AIBrowser.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="关于" Height="500" Width="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Icon="AIBrowser.ico"
+        Background="{DynamicResource PageBg}">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center" Margin="0,10,0,20">
+            <Image Source="AIBrowser.ico" Width="64" Height="64" Margin="0,0,0,10" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <TextBlock Text="AIBrowser" FontSize="20" FontWeight="Bold" Foreground="{DynamicResource TopbarText}" HorizontalAlignment="Center"/>
+            <TextBlock Text="v1.0.0" FontSize="12" Foreground="{DynamicResource TopbarText}" Opacity="0.6" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" VerticalAlignment="Center">
+            <TextBlock Text="开发者：崔鑫 / Gemini / ChatGPT" 
+                       Foreground="{DynamicResource TopbarText}" 
+                       HorizontalAlignment="Center" Margin="0,4"/>
+
+            <TextBlock Text="联系邮箱：shane@88.com" 
+                       Foreground="{DynamicResource TopbarText}" 
+                       HorizontalAlignment="Center" Margin="0,4"/>
+
+
+            <TextBox Text="更新/评论：http://www.clanplus.cn/?id=35" 
+         Foreground="{DynamicResource TopbarText}" 
+         HorizontalAlignment="Center" 
+         Margin="0,4"
+         
+         IsReadOnly="True"             
+         Background="Transparent"      
+         BorderThickness="0"           
+         Padding="0"                   
+         TextWrapping="Wrap"/>
+
+
+            <TextBlock Text="AI 聚合浏览器，让效率触手可及。" 
+                       Foreground="{DynamicResource TopbarText}" 
+                       HorizontalAlignment="Center" Margin="0,15,0,0"
+                       TextWrapping="Wrap" Opacity="0.8"/>
+        </StackPanel>
+
+        <Button Grid.Row="2" Content="关闭" Width="100" Height="30" Click="Close_Click" HorizontalAlignment="Center"/>
+    </Grid>
+</Window>

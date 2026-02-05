@@ -1,0 +1,23 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Color x:Key="AccentColor">#3B82F6</Color>
+    <SolidColorBrush x:Key="Accent" Color="{StaticResource AccentColor}"/>
+
+    <SolidColorBrush x:Key="SidebarBg" Color="#F4F6F8"/>
+    <SolidColorBrush x:Key="SidebarText" Color="#111827"/>
+
+    <SolidColorBrush x:Key="TabItemBg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="TabItemBorder" Color="#E5E7EB"/>
+    <SolidColorBrush x:Key="TabItemHoverBorder" Color="#C7CCD1"/>
+
+    <SolidColorBrush x:Key="IconBg" Color="#E5E7EB"/>
+
+    <SolidColorBrush x:Key="TopbarBg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="TopbarText" Color="#111827"/>
+
+    <SolidColorBrush x:Key="PageBg" Color="#FFFFFF"/>
+
+    <SolidColorBrush x:Key="ControlBg" Color="#FFFFFF"/>
+    <SolidColorBrush x:Key="ControlText" Color="#111827"/>
+    <SolidColorBrush x:Key="ControlBorder" Color="#D1D5DB"/> 
+</ResourceDictionary>
