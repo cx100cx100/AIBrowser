@@ -2,6 +2,8 @@
 
 一个基于 WebView2 (Edge) 内核的轻量级 AI 聚合浏览器。专为高效使用 ChatGPT、Claude、Gemini、Kimi 等 AI 工具而设计。
 
+用途：期望一站式使用固定的几个网页，如一站式使用全部的 AI 网站。
+
 ![AIBrowser 截图](Assets/screenshot.png) 
 ## ✨ 主要功能
 
