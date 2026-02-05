@@ -4,6 +4,8 @@
 
 用途：期望一站式使用固定的几个网页，如一站式使用全部的 AI 网站。
 
+用途和使用方法，和罗技官方软件“罗技AI调度台”完全一致。 但是解决了罗技调度台无法改变窗口大小的问题。
+
 ![AIBrowser 截图](Assets/screenshot.png) 
 ## ✨ 主要功能
 
@@ -14,7 +16,6 @@
     * **LRU 内存优化**：自动清理长期不用的标签页内存，保持系统流畅。
     * **自动标题获取**：自动抓取网页标题作为标签名。
     * **图标自动缓存**：智能获取并本地缓存网站图标 (Favicon)。
-* **💼 摸鱼/老板键**：支持全局快捷键 `Alt + A` 快速显示/隐藏窗口。
 * **👻 托盘运行**：支持最小化到系统托盘，保持桌面整洁。
 * **💾 便携绿色**：提供免安装便携版，解压即用。
 
@@ -41,7 +42,7 @@
 
 1. 克隆仓库：
    ```bash
-   git clone [https://github.com/你的用户名/AIBrowser.git](https://github.com/你的用户名/AIBrowser.git)
+   git clone [https://github.com/你的用户名/AIBrowser.git](https://github.com/你的用户名/AIBrowser.git)```
   
 2. 使用 Visual Studio 2022 打开 AIBrowser.sln。
 
