@@ -1,15 +1,12 @@
 ﻿using AIBrowser.Models;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Windows;
-using System.Windows.Controls;
-using Microsoft.Web.WebView2.Wpf;
 using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.Wpf;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-
-
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
 
 namespace AIBrowser
 {
@@ -23,17 +20,44 @@ namespace AIBrowser
         private readonly LinkedList<string> _lru = new();
         private readonly Dictionary<string, LinkedListNode<string>> _lruNodes = new();
 
-        // 放在 MainWindow 类里
+        public MainWindow()
+        {
+            InitializeComponent();
+
+            SourceInitialized += (_, __) => FixMaximizeToWorkArea();
+
+            // 监听主题变化
+            AIBrowser.Services.ThemeService.EffectiveThemeChanged += newTheme =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    foreach (var wv in _webviews.Values)
+                    {
+                        UpdateWebViewTheme(wv);
+                    }
+                    AIBrowser.Services.ThemeService.ApplyTitleBarTheme(this, newTheme);
+                });
+            };
+
+            // 监听配置变化
+            App.Config.ConfigChanged += _ =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    BuildTabsFromConfig();
+                    AIBrowser.Services.ThemeService.ApplyTheme(App.Config.Current.Theme);
+                });
+            };
+
+            BuildTabsFromConfig();
+            AIBrowser.Services.ThemeService.ApplyTheme(App.Config.Current.Theme);
+        }
+
         private static void UpdateWebViewTheme(WebView2 wv)
         {
-            // 只有当 CoreWebView2 初始化完成后才能设置
             if (wv == null || wv.CoreWebView2 == null) return;
 
-            // 读取当前配置的主题
             string effectiveTheme = AIBrowser.Services.ThemeService.CurrentEffectiveTheme;
-
-            // 转换为 WebView2 的枚举
-            // 注意：需要引用 Microsoft.Web.WebView2.Core 命名空间
             wv.CoreWebView2.Profile.PreferredColorScheme =
                 effectiveTheme.Equals("Light", StringComparison.OrdinalIgnoreCase)
                     ? CoreWebView2PreferredColorScheme.Light
@@ -42,11 +66,9 @@ namespace AIBrowser
 
         private void FixMaximizeToWorkArea()
         {
-            // 简化版：最大化时不覆盖任务栏
             MaxHeight = SystemParameters.WorkArea.Height + 16;
             MaxWidth = SystemParameters.WorkArea.Width + 16;
         }
-
 
         private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
@@ -58,37 +80,24 @@ namespace AIBrowser
             DragMove();
         }
 
-        // 如果你在 Window 上也加了 MouseLeftButtonDown，就用这个（可选）
         private void Window_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
-            // 空白区域也允许拖动
             if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
             {
                 DragMove();
             }
         }
 
-        private void MinBtn_Click(object sender, RoutedEventArgs e)
-        {
-            WindowState = WindowState.Minimized;
-        }
+        private void MinBtn_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
 
-        private void MaxBtn_Click(object sender, RoutedEventArgs e)
-        {
-            ToggleMaximize();
-        }
+        private void MaxBtn_Click(object sender, RoutedEventArgs e) => ToggleMaximize();
 
-        private void CloseBtn_Click(object sender, RoutedEventArgs e)
-        {
-            // 仍然走你已有的 OnClosing 逻辑：隐藏到托盘
-            Close();
-        }
+        private void CloseBtn_Click(object sender, RoutedEventArgs e) => Close();
 
         private void ToggleMaximize()
         {
             WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
         }
-
 
         private void MarkWebViewUsed(string tabId)
         {
@@ -113,8 +122,7 @@ namespace AIBrowser
 
                 var idToEvict = oldest.Value;
 
-                // 理论上不会淘汰当前正在用的（因为刚 MarkUsed），但保险起见可跳过当前
-                if (TabList.SelectedItem is AIBrowser.Models.TabItemModel selected && selected.Id == idToEvict)
+                if (TabList.SelectedItem is TabItemModel selected && selected.Id == idToEvict)
                 {
                     _lru.RemoveFirst();
                     _lru.AddLast(idToEvict);
@@ -133,16 +141,12 @@ namespace AIBrowser
             }
         }
 
-
-
         private static Task<CoreWebView2Environment> CreateEnvAsync()
         {
             var folder = System.IO.Path.Combine(App.Config.ConfigDir, "WebView2UserData");
             System.IO.Directory.CreateDirectory(folder);
             return CoreWebView2Environment.CreateAsync(null, folder);
         }
-
-
 
         private void ShowOnly(WebView2 target)
         {
@@ -153,12 +157,14 @@ namespace AIBrowser
             }
         }
 
+        // ==========================================================
+        // 【核心修改】增加加载状态监听
+        // ==========================================================
         private async void EnsureWebViewForSelectedTab()
         {
-            if (TabList.SelectedItem is not AIBrowser.Models.TabItemModel tab)
+            if (TabList.SelectedItem is not TabItemModel tab)
                 return;
 
-            // URL 为空就不加载
             var navUrl = NormalizeUrl(tab.Url);
             if (navUrl is null)
             {
@@ -166,7 +172,6 @@ namespace AIBrowser
                 return;
             }
 
-            // 已存在：直接显示 + 更新 LRU + 必要时淘汰
             if (_webviews.TryGetValue(tab.Id, out var existing))
             {
                 MarkWebViewUsed(tab.Id);
@@ -175,11 +180,16 @@ namespace AIBrowser
                 return;
             }
 
-            var wv = new WebView2
+            var wv = new WebView2 { Visibility = Visibility.Collapsed };
+            // 【优化】设置默认背景色，防止深色模式下闪白屏
+            if (AIBrowser.Services.ThemeService.CurrentEffectiveTheme == "Dark")
             {
-                Visibility = Visibility.Collapsed
-            };
-
+                wv.DefaultBackgroundColor = System.Drawing.Color.FromArgb(255, 30, 30, 30); // 和你的 PageBg 颜色接近
+            }
+            else
+            {
+                wv.DefaultBackgroundColor = System.Drawing.Color.White;
+            }
             ContentHost.Children.Add(wv);
             _webviews[tab.Id] = wv;
 
@@ -191,17 +201,16 @@ namespace AIBrowser
             }
             catch (Exception ex)
             {
-                // 初始化失败：把刚加入的 webview 清理掉，避免残留
                 ContentHost.Children.Remove(wv);
                 wv.Dispose();
                 _webviews.Remove(tab.Id);
-
-                System.Windows.MessageBox.Show($"初始化 WebView2 失败：{ex.Message}\nHResult=0x{ex.HResult:X8}");
+                System.Windows.MessageBox.Show($"初始化 WebView2 失败：{ex.Message}");
                 return;
             }
 
             try
             {
+                // 1. 新窗口请求
                 wv.CoreWebView2.NewWindowRequested += (s, e) =>
                 {
                     e.Handled = true;
@@ -217,137 +226,90 @@ namespace AIBrowser
                     catch { }
                 };
 
+                // 2. 标题变化
                 wv.CoreWebView2.DocumentTitleChanged += (s, e) =>
                 {
-                    Dispatcher.Invoke(() =>
-                    {
-                        tab.AutoTitle = wv.CoreWebView2.DocumentTitle;
-                        TabList.Items.Refresh();
-
-                    });
+                    Dispatcher.Invoke(() => tab.AutoTitle = wv.CoreWebView2.DocumentTitle);
                 };
 
-                wv.CoreWebView2.Navigate(navUrl);
+                // 3. 【新增】开始导航 -> 设置加载中 (转圈圈)
+                wv.CoreWebView2.NavigationStarting += (s, e) =>
+                {
+                    Dispatcher.Invoke(() => tab.IsLoading = true);
+                };
 
+                // 4. 【修改】导航完成 -> 取消加载中 + 获取图标
                 bool iconFetched = false;
-
                 wv.CoreWebView2.NavigationCompleted += async (s, e) =>
                 {
+                    // 停止转圈
+                    Dispatcher.Invoke(() => tab.IsLoading = false);
+
+                    if (!e.IsSuccess) return; // 【优化】如果加载失败，就不去下图标了
+
                     if (iconFetched) return;
                     iconFetched = true;
 
+                    // 检查是否已经是本地资源图标
                     bool isDefaultAsset = !string.IsNullOrWhiteSpace(tab.IconPath)
                                           && tab.IconPath.Contains("Assets", StringComparison.OrdinalIgnoreCase);
 
                     if (!string.IsNullOrWhiteSpace(tab.IconPath)
                         && System.IO.File.Exists(tab.IconPath)
-                        && !isDefaultAsset) // 如果是默认图标，不要 return，继续往下走去尝试下载
+                        && !isDefaultAsset)
                     {
                         return;
                     }
 
-                    // 从 DOM 取 icon 链接（可能为空）
+                    // DOM 抓取图标函数
                     async Task<string?> getIconUrlFromDom()
                     {
                         try
                         {
-                            // 取 rel=icon 或 shortcut icon
-                            var script = @"
-                (function(){
-                    var el = document.querySelector('link[rel~=""icon""]');
-                    return el ? el.href : '';
-                })();";
+                            var script = @"(function(){ var el = document.querySelector('link[rel~=""icon""]'); return el ? el.href : ''; })();";
                             var result = await wv.CoreWebView2.ExecuteScriptAsync(script);
-                            // result 是 JSON 字符串，比如 ""https://..."" 或 """"，需要去掉引号
                             if (string.IsNullOrWhiteSpace(result)) return null;
                             result = result.Trim();
                             if (result.StartsWith('"') && result.EndsWith('"'))
-                            {
-                                // 【优化】IDE0057: 使用切片语法，更简洁（C# 8.0+）
                                 result = result[1..^1];
-                            }
                             return string.IsNullOrWhiteSpace(result) ? null : result;
                         }
                         catch { return null; }
                     }
 
                     var savedPath = await AIBrowser.Services.FaviconService.TryDownloadFaviconAsync(navUrl, tab.Id, getIconUrlFromDom);
-                    if (string.IsNullOrWhiteSpace(savedPath)) return; // 这里已经防住了，如果是空直接return了，所以这里不用改。
+                    if (string.IsNullOrWhiteSpace(savedPath)) return;
 
                     Dispatcher.Invoke(() =>
                     {
-                        // 更新内存模型
                         tab.IconPath = savedPath;
-                        TabList.Items.Refresh();
-
-                        // 更新配置并保存（写回 IconPath）
+                        // 更新配置缓存
                         var cfg = App.Config.Current;
                         var cfgTab = cfg.Tabs.FirstOrDefault(x => x.Id == tab.Id);
                         if (cfgTab != null)
                         {
                             cfgTab.IconPath = savedPath;
-                            App.Config.Save(cfg, raiseEvent: false); // 不触发重建，避免循环
+                            App.Config.Save(cfg, raiseEvent: false);
                         }
                     });
                 };
 
+                // 开始导航
+                wv.CoreWebView2.Navigate(navUrl);
 
-                // 新创建：显示 + 更新 LRU + 必要时淘汰
                 MarkWebViewUsed(tab.Id);
                 ShowOnly(wv);
                 EvictIfNeeded();
             }
             catch (Exception ex)
             {
-                System.Windows.MessageBox.Show($"导航失败：{ex.Message}\nHResult=0x{ex.HResult:X8}\nURL={navUrl}");
+                System.Windows.MessageBox.Show($"导航失败：{ex.Message}");
             }
-        }
-
-
-
-
-        public MainWindow()
-        {
-            InitializeComponent();
-
-            SourceInitialized += (_, __) => FixMaximizeToWorkArea();
-
-            // 【新增】监听实际主题变化（处理 系统自动切换 或 手动切换）
-            AIBrowser.Services.ThemeService.EffectiveThemeChanged += newTheme =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    // 更新所有 WebView
-                    foreach (var wv in _webviews.Values)
-                    {
-                        UpdateWebViewTheme(wv);
-                    }
-
-                    // 确保主窗口自己的标题栏（如果用了原生边框）也更新
-                    AIBrowser.Services.ThemeService.ApplyTitleBarTheme(this, newTheme);
-                });
-            };
-
-            App.Config.ConfigChanged += _ =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    BuildTabsFromConfig();
-                    // 主题应用现在交给 ThemeService 在 Save 时处理，或者在这里调用也可以
-                    // 但建议统一由 ThemeService.ApplyTheme(App.Config.Current.Theme) 驱动
-                    AIBrowser.Services.ThemeService.ApplyTheme(App.Config.Current.Theme);
-                });
-            };
-
-            BuildTabsFromConfig();
-            AIBrowser.Services.ThemeService.ApplyTheme(App.Config.Current.Theme);
         }
 
         private void BuildTabsFromConfig()
         {
-            // 1) 清理被禁用/删除的 WebView2（并同步清 LRU）
-            var enabledIds = new HashSet<string>(
-                App.Config.Current.Tabs.Where(x => x.Enabled).Select(x => x.Id));
+            var enabledIds = new HashSet<string>(App.Config.Current.Tabs.Where(x => x.Enabled).Select(x => x.Id));
 
             var toRemove = _webviews.Keys.Where(id => !enabledIds.Contains(id)).ToList();
             foreach (var id in toRemove)
@@ -358,7 +320,6 @@ namespace AIBrowser
                     wv.Dispose();
                     _webviews.Remove(id);
                 }
-
                 if (_lruNodes.TryGetValue(id, out var node))
                 {
                     _lru.Remove(node);
@@ -366,46 +327,35 @@ namespace AIBrowser
                 }
             }
 
-            // 2) 重建 Tab 列表（顺序按配置来）
             _tabs.Clear();
-
             foreach (var cfgTab in App.Config.Current.Tabs)
             {
                 if (!cfgTab.Enabled) continue;
 
-                _tabs.Add(new AIBrowser.Models.TabItemModel
+                _tabs.Add(new TabItemModel
                 {
                     Id = cfgTab.Id,
                     Url = NormalizeUrl(cfgTab.Url) ?? "",
                     CustomTitle = cfgTab.Name ?? "",
                     AutoTitle = "未加载",
-
-                    // 【修改】如果是空字符串，强制转为 null。WPF 对 null 不会报错。
-                    IconPath = string.IsNullOrWhiteSpace(cfgTab.IconPath) ? null : cfgTab.IconPath
+                    IconPath = string.IsNullOrWhiteSpace(cfgTab.IconPath) ? null : cfgTab.IconPath,
+                    IsLoading = false // 初始状态
                 });
             }
 
             TabList.ItemsSource = null;
             TabList.ItemsSource = _tabs;
 
-            if (_tabs.Count > 0)
-                TabList.SelectedIndex = 0;
+            if (_tabs.Count > 0) TabList.SelectedIndex = 0;
 
-            // 3) 主动触发当前标签加载/显示
             EnsureWebViewForSelectedTab();
         }
-
-
-
 
         private void SettingsBtn_Click(object sender, RoutedEventArgs e)
         {
             if (_settingsWindow is null)
             {
-                _settingsWindow = new SettingsWindow
-                {
-                    Owner = this
-                };
+                _settingsWindow = new SettingsWindow { Owner = this };
                 _settingsWindow.Closed += (_, __) => _settingsWindow = null;
                 _settingsWindow.Show();
             }
@@ -415,25 +365,23 @@ namespace AIBrowser
             }
         }
 
-protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
-{
-    // 如果不是通过托盘右键“退出”点击的，则取消关闭，改为隐藏
-    if (!App.IsExiting)
-    {
-        e.Cancel = true; // 阻止关闭
-        this.Hide();     // 隐藏窗口
-    }
-    else
-    {
-        base.OnClosing(e);
-    }
-}
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            if (!App.IsExiting)
+            {
+                e.Cancel = true;
+                this.Hide();
+            }
+            else
+            {
+                base.OnClosing(e);
+            }
+        }
 
         public void ShowAndActivate()
         {
             if (!IsVisible) Show();
             if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
-
             Activate();
             Topmost = true;
             Topmost = false;
@@ -445,27 +393,19 @@ protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
             EnsureWebViewForSelectedTab();
         }
 
-        // 在 MainWindow.xaml.cs 中
-
         private void RefreshBtn_Click(object sender, RoutedEventArgs e)
         {
-            // 1. 获取当前选中的标签页数据
-            if (TabList.SelectedItem is not AIBrowser.Models.TabItemModel tab) return;
-
-            // 2. 获取该标签页设定的原始 URL
+            if (TabList.SelectedItem is not TabItemModel tab) return;
             var originalUrl = NormalizeUrl(tab.Url);
-            if (originalUrl == null) return; // 如果配置为空，忽略
+            if (originalUrl == null) return;
 
-            // 3. 如果 WebView 已经存在且初始化完成
             if (_webviews.TryGetValue(tab.Id, out var wv) && wv.CoreWebView2 != null)
             {
-                // 【修改】不再是 Reload()，而是强制导航回原始 URL
-                // 这样就实现了你想要的“重置/回到首页”的效果
+                // Navigate 会自动触发 NavigationStarting，所以进度条会自动出现
                 wv.CoreWebView2.Navigate(originalUrl);
             }
             else
             {
-                // 如果 WebView 还没加载（或者被 LRU 淘汰了），这个方法本身就会加载原始 URL
                 EnsureWebViewForSelectedTab();
             }
         }
@@ -475,20 +415,25 @@ protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
             raw = (raw ?? "").Trim();
             if (string.IsNullOrWhiteSpace(raw)) return null;
 
-            // 用户可能填 "www.xxx.com" 或 "xxx.com"
-            if (!raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
-                !raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            // 简单的正则判断是否像个网址 (包含点，且没有空格)
+            bool isLikelyUrl = raw.Contains('.') && !raw.Contains(' ');
+
+            if (isLikelyUrl)
             {
-                raw = "https://" + raw;
+                if (!raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) &&
+                    !raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    return "https://" + raw;
+                }
+                if (Uri.TryCreate(raw, UriKind.Absolute, out var uri)) return uri.ToString();
             }
 
-            // 再验证一下是不是合法绝对 URI
-            if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri))
-                return null;
+            // 【优化】如果不是网址，默认使用 Google/Bing 搜索
+            // return $"https://www.google.com/search?q={System.Net.WebUtility.UrlEncode(raw)}";
 
-            return uri.ToString();
+            // 目前保持你原有的逻辑返回 null 也可以，看你是否需要这个“搜索框”特性
+            return null;
         }
-
 
         public async void ClearBrowserData()
         {
@@ -501,7 +446,6 @@ protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
                         await wv.CoreWebView2.Profile.ClearBrowsingDataAsync();
                     }
                 }
-
                 System.Windows.MessageBox.Show("已清理缓存与 Cookie。");
             }
             catch (Exception ex)
@@ -509,6 +453,5 @@ protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
                 System.Windows.MessageBox.Show("清缓存失败：" + ex.Message);
             }
         }
-
     }
 }
