@@ -1,17 +1,17 @@
 ﻿using System;
-using System.Diagnostics;
-using System.Drawing;
-using System.Windows;
-using System.Windows.Forms;
+using System.Drawing; // 用于 Icon
+using System.Windows; // 用于 WPF 的 Application
 
 namespace AIBrowser.Services
 {
     internal sealed class TrayService : IDisposable
     {
-        private readonly NotifyIcon _notifyIcon;
+        // 显式使用 System.Windows.Forms 前缀，不引用整个命名空间
+        private readonly System.Windows.Forms.NotifyIcon _notifyIcon;
+
+        private readonly Action _onShow;
         private readonly Action _onExit;
         private readonly Action _onRestart;
-        private readonly Action _onShow;
 
         public TrayService(Action onShow, Action onExit, Action onRestart)
         {
@@ -19,30 +19,52 @@ namespace AIBrowser.Services
             _onExit = onExit;
             _onRestart = onRestart;
 
-            _notifyIcon = new NotifyIcon
+            _notifyIcon = new System.Windows.Forms.NotifyIcon
             {
-                Text = "AIbrowser",
-                Icon = SystemIcons.Application, // 先用默认图标，后面再换成你的 icon
+                Text = "AIBrowser AI 聚合浏览器",
                 Visible = true,
                 ContextMenuStrip = BuildMenu()
             };
 
-            // 双击托盘图标显示窗口（虽然你没强制，但这个很实用；不想要我下一步教你删掉）
+            try
+            {
+                var iconUri = new Uri("pack://application:,,,/AIBrowser.ico");
+                var streamInfo = System.Windows.Application.GetResourceStream(iconUri);
+
+                if (streamInfo != null)
+                {
+                    _notifyIcon.Icon = new Icon(streamInfo.Stream);
+                }
+                else
+                {
+                    _notifyIcon.Icon = SystemIcons.Application;
+                }
+            }
+            catch
+            {
+                _notifyIcon.Icon = SystemIcons.Application;
+            }
+
             _notifyIcon.DoubleClick += (_, __) => _onShow();
         }
 
-        private ContextMenuStrip BuildMenu()
+        private System.Windows.Forms.ContextMenuStrip BuildMenu()
         {
-            var menu = new ContextMenuStrip();
+            var menu = new System.Windows.Forms.ContextMenuStrip();
 
-            var restart = new ToolStripMenuItem("重启");
-            restart.Click += (_, __) => _onRestart();
+            var showItem = new System.Windows.Forms.ToolStripMenuItem("显示主界面");
+            showItem.Click += (_, __) => _onShow();
 
-            var exit = new ToolStripMenuItem("退出");
-            exit.Click += (_, __) => _onExit();
+            var restartItem = new System.Windows.Forms.ToolStripMenuItem("重启");
+            restartItem.Click += (_, __) => _onRestart();
 
-            menu.Items.Add(restart);
-            menu.Items.Add(exit);
+            var exitItem = new System.Windows.Forms.ToolStripMenuItem("退出");
+            exitItem.Click += (_, __) => _onExit();
+
+            menu.Items.Add(showItem);
+            menu.Items.Add(restartItem);
+            menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
+            menu.Items.Add(exitItem);
 
             return menu;
         }

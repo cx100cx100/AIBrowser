@@ -15,11 +15,13 @@ namespace AIBrowser.Services
 
         public bool IsFirstInstance { get; private set; }
 
+        // 当收到唤醒信号时触发
         public event Action? ShowRequested;
 
         public SingleInstanceService(string appId)
         {
-            _mutexName = $@"Global\{appId}.SingleInstance";
+            // 确保名称全局唯一
+            _mutexName = $@"Global\{appId}.Mutex";
             _pipeName = $@"{appId}.Pipe";
         }
 
@@ -28,28 +30,31 @@ namespace AIBrowser.Services
             _mutex = new Mutex(initiallyOwned: true, name: _mutexName, createdNew: out bool createdNew);
             IsFirstInstance = createdNew;
 
-            if (!IsFirstInstance)
-                return;
-
-            _cts = new CancellationTokenSource();
-            _ = Task.Run(() => ListenLoopAsync(_cts.Token));
+            // 只有第一个实例才需要启动监听服务
+            if (IsFirstInstance)
+            {
+                _cts = new CancellationTokenSource();
+                _ = Task.Run(() => ListenLoopAsync(_cts.Token));
+            }
         }
 
+        // 第二个实例调用此方法：发送信号给第一个实例
         public void SignalFirstInstanceToShow()
         {
             try
             {
                 using var client = new NamedPipeClientStream(".", _pipeName, PipeDirection.Out);
-                client.Connect(200); // 200ms 足够了
+                client.Connect(500); // 500ms 超时
                 using var writer = new StreamWriter(client) { AutoFlush = true };
                 writer.WriteLine("SHOW");
             }
             catch
             {
-                // 这里不需要弹窗，失败就算了
+                // 连接失败或超时，直接忽略
             }
         }
 
+        // 第一个实例的监听循环
         private async Task ListenLoopAsync(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
@@ -71,7 +76,7 @@ namespace AIBrowser.Services
                 }
                 catch
                 {
-                    // 忽略，继续循环
+                    // 管道错误忽略，重新等待连接
                 }
             }
         }
