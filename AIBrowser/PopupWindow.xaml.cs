@@ -1,40 +1,62 @@
 ﻿using Microsoft.Web.WebView2.Core;
 using System;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace AIBrowser
 {
     public partial class PopupWindow : Window
     {
-        private readonly Uri _target;
-
-        public PopupWindow(Uri target)
+        public PopupWindow()
         {
             InitializeComponent();
-            _target = target;
-
-            Loaded += PopupWindow_Loaded;
+            // 应用主题，保持弹窗标题栏颜色一致
+            AIBrowser.Services.ThemeService.ApplyTitleBarTheme(this, AIBrowser.Services.ThemeService.CurrentEffectiveTheme);
         }
 
-        private async void PopupWindow_Loaded(object sender, RoutedEventArgs e)
+        public async Task InitializeAsync(CoreWebView2Environment env)
         {
-            try
-            {
-                await PopupWebView.EnsureCoreWebView2Async();
-                // 读取配置并应用
-                string currentTheme = App.Config.Current.Theme;
-                PopupWebView.CoreWebView2.Profile.PreferredColorScheme =
-                    currentTheme.Equals("Light", StringComparison.OrdinalIgnoreCase)
-                        ? CoreWebView2PreferredColorScheme.Light
-                        : CoreWebView2PreferredColorScheme.Dark;
+            // 此时窗口已经 Show()，直接注入环境，瞬间完成，绝生死锁！
+            await PopupWebView.EnsureCoreWebView2Async(env);
 
-                PopupWebView.CoreWebView2.Navigate(_target.ToString());
-            }
-            catch (Exception ex)
+            // 读取配置并应用主题
+            string currentTheme = App.Config.Current.Theme;
+            PopupWebView.CoreWebView2.Profile.PreferredColorScheme =
+                currentTheme.Equals("Light", StringComparison.OrdinalIgnoreCase)
+                    ? CoreWebView2PreferredColorScheme.Light
+                    : CoreWebView2PreferredColorScheme.Dark;
+
+            // 监听窗口标题改变
+            PopupWebView.CoreWebView2.DocumentTitleChanged += (s, e) =>
             {
-                System.Windows.MessageBox.Show("打开新窗口失败：" + ex.Message);
-                Close();
-            }
+                // 让弹窗的标题栏显示正确的网页名称
+                Title = PopupWebView.CoreWebView2.DocumentTitle;
+            };
+
+            // 拦截弹窗内部的再次弹窗（防止自带的丑陋窗口再次跑出来）
+            PopupWebView.CoreWebView2.NewWindowRequested += async (s, e) =>
+            {
+                var deferral = e.GetDeferral();
+                e.Handled = true;
+                try
+                {
+                    var pop = new PopupWindow { Owner = this };
+
+                    // 【同样必须先 Show】
+                    pop.Show();
+
+                    await pop.InitializeAsync(env);
+                    e.NewWindow = pop.PopupWebView.CoreWebView2;
+                }
+                catch (Exception ex)
+                {
+                    System.Windows.MessageBox.Show("打开深层新窗口失败：" + ex.Message);
+                }
+                finally
+                {
+                    deferral.Complete();
+                }
+            };
         }
 
         private void Close_Click(object sender, RoutedEventArgs e)

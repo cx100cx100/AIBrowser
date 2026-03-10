@@ -4,11 +4,10 @@
         Title="AIBrowser" Height="900" Width="1600"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
-ResizeMode="CanResize"
-Background="{DynamicResource PageBg}"
+        ResizeMode="CanResize"
+        Background="{DynamicResource PageBg}"
         MouseLeftButtonDown="Window_MouseLeftButtonDown"
-        Icon="AIBrowser.ico"
->
+        Icon="AIBrowser.ico">
 
     <WindowChrome.WindowChrome>
         <WindowChrome 
@@ -20,6 +19,33 @@ Background="{DynamicResource PageBg}"
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+
+        <Style x:Key="IconToggleButtonStyle" TargetType="ToggleButton">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{DynamicResource SidebarText}"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#1A888888"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter Property="Background" Value="#33888888"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="IconButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
@@ -45,6 +71,7 @@ Background="{DynamicResource PageBg}"
                 </Setter.Value>
             </Setter>
         </Style>
+
         <Style x:Key="CaptionButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource TopbarText}"/>
@@ -105,16 +132,13 @@ Background="{DynamicResource PageBg}"
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- 自绘顶栏（可拖拽区域 + 窗口按钮） -->
         <Border Grid.Row="0" Background="{DynamicResource TopbarBg}">
             <DockPanel LastChildFill="True">
-                <!-- 左侧拖动区域 -->
                 <Border Background="Transparent" DockPanel.Dock="Left" Width="200"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
                     <TextBlock Text=" " />
                 </Border>
 
-                <!-- 右侧窗口按钮 -->
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
                     <Button Style="{StaticResource CaptionButtonStyle}" Click="MinBtn_Click">
                         <TextBlock Text="&#xE921;"/>
@@ -129,21 +153,30 @@ Background="{DynamicResource PageBg}"
                     </Button>
                 </StackPanel>
 
-                <!-- 中间也作为拖动区域 -->
                 <Border Background="Transparent"
-                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"/>
+                        MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"/>
             </DockPanel>
         </Border>
 
-        <!-- 主体：左侧栏 + 内容区 -->
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="104"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- 左侧导航栏 -->
             <Border Grid.Column="0" Background="{DynamicResource SidebarBg}">
+
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Width" Value="104"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                <Setter Property="Width" Value="68"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -151,22 +184,24 @@ Background="{DynamicResource PageBg}"
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- 顶部 Logo 区（可选） -->
                     <Border Grid.Row="0" Height="70" Background="Transparent">
-                        <TextBlock Text=" " />
+                        <ToggleButton x:Name="SidebarToggle" 
+                                      IsChecked="True" 
+                                      Style="{StaticResource IconToggleButtonStyle}"
+                                      ToolTip="展开/收起侧边栏">
+                            <TextBlock Text="&#xE700;"/>
+                        </ToggleButton>
                     </Border>
 
-                    <!-- 标签列表 -->
                     <ListBox x:Name="TabList"
-                         Grid.Row="1"
-                         BorderThickness="0"
-                         Background="Transparent"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto"
-                         SelectionChanged="TabList_SelectionChanged"
+                             Grid.Row="1"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             ScrollViewer.VerticalScrollBarVisibility="Hidden"
+                             SelectionChanged="TabList_SelectionChanged"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-ScrollViewer.CanContentScroll="False"
-HorizontalContentAlignment="Stretch"
->
+                             ScrollViewer.CanContentScroll="False"
+                             HorizontalContentAlignment="Stretch">
 
                         <ListBox.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -187,15 +222,14 @@ HorizontalContentAlignment="Stretch"
                                     <Setter.Value>
                                         <ControlTemplate TargetType="ListBoxItem">
                                             <Border x:Name="Bd"
-                            Width="80"
-                            Height="84"
-                            Background="{DynamicResource TabItemBg}"
-                            BorderBrush="{DynamicResource TabItemBorder}"
-                            BorderThickness="2"
-                            CornerRadius="18"
-                            ClipToBounds="True">
-                                                <ContentPresenter HorizontalAlignment="Stretch"
-                                          VerticalAlignment="Stretch"/>
+                                                    Width="80"
+                                                    Height="84"
+                                                    Background="{DynamicResource TabItemBg}"
+                                                    BorderBrush="{DynamicResource TabItemBorder}"
+                                                    BorderThickness="2"
+                                                    CornerRadius="18"
+                                                    ClipToBounds="True">
+                                                <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
                                                 <Trigger Property="IsSelected" Value="True">
@@ -206,6 +240,11 @@ HorizontalContentAlignment="Stretch"
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource TabItemHoverBorder}"/>
                                                 </Trigger>
+                                                <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                                    <Setter TargetName="Bd" Property="Width" Value="48"/>
+                                                    <Setter TargetName="Bd" Property="Height" Value="48"/>
+                                                    <Setter TargetName="Bd" Property="CornerRadius" Value="14"/>
+                                                </DataTrigger>
                                             </ControlTemplate.Triggers>
                                         </ControlTemplate>
                                     </Setter.Value>
@@ -213,39 +252,36 @@ HorizontalContentAlignment="Stretch"
                             </Style>
                         </ListBox.ItemContainerStyle>
 
-
-
-
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <Grid Margin="6,6">
+                                <Grid Margin="2,4">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="*"/>
                                         <RowDefinition Height="Auto"/>
                                     </Grid.RowDefinitions>
 
-                                    <Grid Grid.Row="0">
-                                        <Border Width="44" Height="44"
-                    Background="{DynamicResource IconBg}"
-                    CornerRadius="14"
-                    HorizontalAlignment="Center"
-                    VerticalAlignment="Center">
+                                    <Grid Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Border Width="40" Height="40"
+                                                Background="{DynamicResource IconBg}"
+                                                CornerRadius="12"
+                                                HorizontalAlignment="Center"
+                                                VerticalAlignment="Center">
                                             <Image Source="{Binding IconPath, TargetNullValue={x:Null}}" 
-                       Margin="8" 
-                       Stretch="UniformToFill"
-                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                   Margin="6" 
+                                                   Stretch="UniformToFill"
+                                                   RenderOptions.BitmapScalingMode="HighQuality"/>
                                         </Border>
 
-                                        <Border Width="44" Height="44" CornerRadius="14"
-                    Background="#99000000" 
-                    Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                            <TextBlock Text="&#xE72C;" 
-                           FontFamily="Segoe MDL2 Assets" 
-                           FontSize="20" 
-                           Foreground="White"
-                           HorizontalAlignment="Center" 
-                           VerticalAlignment="Center"
-                           RenderTransformOrigin="0.5,0.5">
+                                        <Border Width="40" Height="40" CornerRadius="12"
+                                                Background="#99000000" 
+                                                Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                            <TextBlock Text="&#xE72C;"
+                                                       FontFamily="Segoe MDL2 Assets" 
+                                                       FontSize="20" 
+                                                       Foreground="White"
+                                                       HorizontalAlignment="Center" 
+                                                       VerticalAlignment="Center"
+                                                       RenderTransformOrigin="0.5,0.5">
                                                 <TextBlock.RenderTransform>
                                                     <RotateTransform x:Name="Spin"/>
                                                 </TextBlock.RenderTransform>
@@ -254,8 +290,8 @@ HorizontalContentAlignment="Stretch"
                                                         <BeginStoryboard>
                                                             <Storyboard>
                                                                 <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(RotateTransform.Angle)"
-                                                     From="0" To="360" Duration="0:0:1" 
-                                                     RepeatBehavior="Forever"/>
+                                                                                 From="0" To="360" Duration="0:0:1" 
+                                                                                 RepeatBehavior="Forever"/>
                                                             </Storyboard>
                                                         </BeginStoryboard>
                                                     </EventTrigger>
@@ -264,37 +300,42 @@ HorizontalContentAlignment="Stretch"
                                         </Border>
                                     </Grid>
 
-                                    <TextBlock Grid.Row="1"
-                   Margin="0,8,0,0"
-                   Text="{Binding DisplayTitle}"
-                   Foreground="{DynamicResource SidebarText}"
-                   FontSize="11"
-                   TextTrimming="CharacterEllipsis"
-                   HorizontalAlignment="Center"/>
+                                    <TextBlock x:Name="TabTitleText"
+                                               Grid.Row="1"
+                                               Margin="0,6,0,0"
+                                               Text="{Binding DisplayTitle}"
+                                               Foreground="{DynamicResource SidebarText}"
+                                               FontSize="11"
+                                               TextTrimming="CharacterEllipsis"
+                                               HorizontalAlignment="Center"/>
                                 </Grid>
+
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                        <Setter TargetName="TabTitleText" Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
 
-                    <!-- 底部功能区：刷新/设置放这里更像图（可选） -->
                     <StackPanel Grid.Row="2" Margin="12,12" Orientation="Vertical">
                         <Button Click="RefreshBtn_Click" 
-            Style="{StaticResource IconButtonStyle}" 
-            ToolTip="重置页面"
-            Margin="0,0,0,8">
+                                Style="{StaticResource IconButtonStyle}" 
+                                ToolTip="重置页面"
+                                Margin="0,0,0,8">
                             <TextBlock Text="&#xE72C;"/>
                         </Button>
 
                         <Button Click="SettingsBtn_Click" 
-            Style="{StaticResource IconButtonStyle}"
-            ToolTip="设置">
+                                Style="{StaticResource IconButtonStyle}"
+                                ToolTip="设置">
                             <TextBlock Text="&#xE713;"/>
                         </Button>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- 右侧内容区：WebView2 容器 -->
             <Grid Grid.Column="1" Background="{DynamicResource PageBg}">
                 <Grid Margin="14">
                     <Border Background="{DynamicResource TopbarBg}" CornerRadius="18"/>
@@ -305,4 +346,3 @@ HorizontalContentAlignment="Stretch"
     </Grid>
 
 </Window>
-

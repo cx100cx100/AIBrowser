@@ -24,6 +24,8 @@ namespace AIBrowser
         {
             InitializeComponent();
 
+            AdaptWindowSizeToScreen();
+
             SourceInitialized += (_, __) => FixMaximizeToWorkArea();
 
             // 监听主题变化
@@ -86,6 +88,84 @@ namespace AIBrowser
             {
                 DragMove();
             }
+        }
+
+        // ==========================================================
+        // 【新增】处理最大化状态下的窗口拖拽脱离 (修复命名空间冲突)
+        // ==========================================================
+        protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
+        {
+            base.OnMouseMove(e);
+
+            // 核心条件：鼠标左键按住拖拽，且当前窗口处于最大化状态
+            if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed && WindowState == WindowState.Maximized)
+            {
+                // 1. 获取鼠标当前在窗口内的相对坐标 (显式使用 System.Windows.Point)
+                System.Windows.Point mousePosInWindow = e.GetPosition(this);
+
+                // 2. 将相对坐标转换为屏幕物理绝对坐标 (必须在改变窗口状态之前获取)
+                System.Windows.Point screenPoint = PointToScreen(mousePosInWindow);
+
+                // 3. 处理高 DPI 缩放：将物理绝对坐标转换回 WPF 逻辑坐标
+                var source = PresentationSource.FromVisual(this);
+                if (source != null)
+                {
+                    screenPoint = source.CompositionTarget.TransformFromDevice.Transform(screenPoint);
+                }
+
+                // 4. 计算鼠标在当前最大化窗口宽度的百分比（用来保证恢复后鼠标依旧在标题栏的相对位置）
+                double ratio = mousePosInWindow.X / ActualWidth;
+
+                // 5. 将窗口恢复正常大小
+                WindowState = WindowState.Normal;
+
+                // 6. 获取恢复后的窗口宽度 (如果有缓存则用 RestoreBounds，否则用默认)
+                double restoreWidth = RestoreBounds.Width;
+                if (double.IsNaN(restoreWidth) || restoreWidth <= 0)
+                {
+                    restoreWidth = Width;
+                    if (double.IsNaN(restoreWidth) || restoreWidth <= 0)
+                    {
+                        restoreWidth = 1000; // 最终保底宽度
+                    }
+                }
+
+                // 7. 计算新位置：保持横向相对比例，纵向位置不变
+                Left = screenPoint.X - (restoreWidth * ratio);
+                Top = screenPoint.Y - mousePosInWindow.Y;
+
+                // 8. 位置调整好后，立即调用原生拖拽接管鼠标
+                try
+                {
+                    DragMove();
+                }
+                catch
+                {
+                    // 忽略可能产生的拖拽异常
+                }
+            }
+        }
+
+        // ==========================================================
+        // 【新增】根据当前屏幕分辨率自适应窗口大小
+        // ==========================================================
+        private void AdaptWindowSizeToScreen()
+        {
+            // 获取当前主屏幕的工作区尺寸（工作区会自动排除底部的任务栏）
+            double workAreaWidth = SystemParameters.WorkArea.Width;
+            double workAreaHeight = SystemParameters.WorkArea.Height;
+
+            // 桌面浏览器常用黄金比例：宽度的 80%，高度的 80%
+            Width = workAreaWidth * 0.9;
+            Height = workAreaHeight * 0.9;
+
+            // 设置保底的最小尺寸，防止用户把窗口缩得过小导致界面崩溃或错位
+            // 通常 800x600 或 1024x768 是比较安全的下限
+            MinWidth = 1024;
+            MinHeight = 700;
+
+            // 让窗口自动在屏幕正中央启动
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
         }
 
         private void MinBtn_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
@@ -211,19 +291,36 @@ namespace AIBrowser
             try
             {
                 // 1. 新窗口请求
-                wv.CoreWebView2.NewWindowRequested += (s, e) =>
+                // 1. 新窗口请求（完美继承 Cookie、Session，修复死锁）
+                wv.CoreWebView2.NewWindowRequested += async (s, e) =>
                 {
+                    // 告诉内核：“先等一下，我去建个新窗口”
+                    var deferral = e.GetDeferral();
                     e.Handled = true;
+
                     try
                     {
-                        var uri = new Uri(e.Uri);
-                        Dispatcher.Invoke(() =>
-                        {
-                            var pop = new PopupWindow(uri) { Owner = this };
-                            pop.Show();
-                        });
+                        var env = await _envTask;
+                        var pop = new PopupWindow { Owner = this };
+
+                        // 【核心修复】：必须先 Show()！
+                        // 必须先让窗口在屏幕上显示出来，生成物理句柄，WebView2 才能成功初始化
+                        pop.Show();
+
+                        // 注入主窗口的环境（共享登录状态和 Cookie）
+                        await pop.InitializeAsync(env);
+
+                        // 把准备好的内核交还给原生请求
+                        e.NewWindow = pop.PopupWebView.CoreWebView2;
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        System.Windows.MessageBox.Show("拦截并打开新窗口失败：" + ex.Message);
+                    }
+                    finally
+                    {
+                        deferral.Complete();
+                    }
                 };
 
                 // 2. 标题变化
