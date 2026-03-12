@@ -327,6 +327,13 @@
                             <TextBlock Text="&#xE72C;"/>
                         </Button>
 
+                        <Button Click="TaskManagerBtn_Click" 
+                                Style="{StaticResource IconButtonStyle}" 
+                                ToolTip="任务管理器与内存"
+                                Margin="0,0,0,8">
+                            <TextBlock Text="&#xE9D9;"/>
+                        </Button>
+
                         <Button Click="SettingsBtn_Click" 
                                 Style="{StaticResource IconButtonStyle}"
                                 ToolTip="设置">

@@ -1,0 +1,99 @@
+﻿<Window x:Class="AIBrowser.TaskManagerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="任务管理器" Height="600" Width="800"
+        WindowStartupLocation="CenterOwner"
+        Icon="AIBrowser.ico"
+        Background="{DynamicResource PageBg}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <Border Grid.Row="0" Background="{DynamicResource TopbarBg}" CornerRadius="12" Padding="16" Margin="0,0,0,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Orientation="Vertical" VerticalAlignment="Center">
+                    <TextBlock Text="任务管理器与内存控制" FontSize="20" FontWeight="SemiBold" Foreground="{DynamicResource TopbarText}"/>
+                    <TextBlock x:Name="MemoryText" Text="当前浏览器总内存占用：计算中..." Margin="0,6,0,0" Foreground="{DynamicResource TopbarText}" Opacity="0.75"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="最大后台保活数：" Foreground="{DynamicResource TopbarText}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBox x:Name="MaxAliveInput" Width="50" TextAlignment="Center" Margin="0,0,10,0"/>
+                    <Button Content="保存" Padding="15,6" Click="SaveMaxAlive_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <TextBlock Grid.Row="1" Text="当前网页进程状态" FontSize="16" FontWeight="SemiBold" Foreground="{DynamicResource SidebarText}" Margin="4,0,0,12"/>
+
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="ProcessList">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal"/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="CardBorder" Width="160" Height="180" 
+                                Background="{DynamicResource TabItemBg}" 
+                                BorderBrush="{DynamicResource ControlBorder}" 
+                                BorderThickness="1" 
+                                CornerRadius="12" 
+                                Margin="0,0,16,16" Padding="12">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <Border Grid.Row="0" HorizontalAlignment="Right" Padding="6,2" CornerRadius="6"
+                                        Background="{Binding IsAlive, Converter={StaticResource BoolToVis}, FallbackValue=#334CAF50}">
+                                    <TextBlock x:Name="StatusText" Text="已休眠" FontSize="10" Foreground="#888888"/>
+                                </Border>
+
+                                <Border Grid.Row="1" Width="48" Height="48" CornerRadius="12" Background="{DynamicResource IconBg}" VerticalAlignment="Center">
+                                    <Image Source="{Binding IconPath, TargetNullValue={x:Null}}" Margin="8" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                </Border>
+
+                                <TextBlock Grid.Row="2" Text="{Binding DisplayTitle}" Foreground="{DynamicResource SidebarText}" 
+                                           TextTrimming="CharacterEllipsis" TextAlignment="Center" Margin="0,12,0,12" ToolTip="{Binding DisplayTitle}"/>
+
+                                <Button Grid.Row="3" Content="结束进程" Padding="0,6" 
+                                        Click="KillProcess_Click" 
+                                        Visibility="{Binding IsAlive, Converter={StaticResource BoolToVis}}"/>
+                            </Grid>
+                        </Border>
+
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsAlive}" Value="True">
+                                <Setter TargetName="StatusText" Property="Text" Value="运行中"/>
+                                <Setter TargetName="StatusText" Property="Foreground" Value="#4CAF50"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding IsAlive}" Value="False">
+                                <Setter TargetName="CardBorder" Property="Opacity" Value="0.5"/>
+                            </DataTrigger>
+                        </DataTemplate.Triggers>
+
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>s
+            </ItemsControl>
+        </ScrollViewer>
+    </Grid>
+</Window>

@@ -178,6 +178,38 @@ namespace AIBrowser
                 System.Windows.MessageBox.Show("设置开机启动失败：" + ex.Message);
             }
 
+            // 【新增修复逻辑】：在保存覆盖旧配置前，比对 URL 是否被修改
+            var oldTabs = App.Config.Current.Tabs;
+            foreach (var newTab in _editing.Tabs)
+            {
+                var oldTab = oldTabs.FirstOrDefault(t => t.Id == newTab.Id);
+
+                // 如果是已存在的标签页，并且 URL 发生了实质性改变
+                if (oldTab != null && !string.Equals(oldTab.Url, newTab.Url, StringComparison.OrdinalIgnoreCase))
+                {
+                    // 如果它当前绑定着一个旧图标
+                    if (!string.IsNullOrWhiteSpace(newTab.IconPath))
+                    {
+                        try
+                        {
+                            // 从物理硬盘上把旧图片删除，避免一直占用垃圾空间
+                            if (System.IO.File.Exists(newTab.IconPath))
+                            {
+                                System.IO.File.Delete(newTab.IconPath);
+                            }
+                        }
+                        catch
+                        {
+                            // 忽略文件正在被占用或没有权限的异常
+                        }
+
+                        // 清空图标路径，这样主界面收到通知后就会知道需要重新走下载流程
+                        newTab.IconPath = null;
+                    }
+                    newTab.Id = Guid.NewGuid().ToString("N");
+                }
+            }
+
             // 保存配置并立即生效
             App.Config.Save(_editing, raiseEvent: true);
 

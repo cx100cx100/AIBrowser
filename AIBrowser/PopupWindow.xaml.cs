@@ -57,11 +57,69 @@ namespace AIBrowser
                     deferral.Complete();
                 }
             };
+
+            // 【新增】自定义右键菜单逻辑
+            // 自定义右键菜单逻辑
+            PopupWebView.CoreWebView2.ContextMenuRequested += (s, e) =>
+            {
+                var currentEnv = PopupWebView.CoreWebView2.Environment;
+                var currentUrl = PopupWebView.CoreWebView2.Source;
+
+                // 创建“复制当前网址”菜单项
+                var copyUrlItem = currentEnv.CreateContextMenuItem("复制当前网址", null, CoreWebView2ContextMenuItemKind.Command);
+                copyUrlItem.CustomItemSelected += (sender, args) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(currentUrl))
+                    {
+                        try
+                        {
+                            System.Windows.Clipboard.SetText(currentUrl);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Windows.MessageBox.Show("复制网址失败：" + ex.Message);
+                        }
+                    }
+                };
+
+                // 创建“在默认浏览器中打开”菜单项
+                var openInDefaultBrowserItem = currentEnv.CreateContextMenuItem("在默认浏览器中打开", null, CoreWebView2ContextMenuItemKind.Command);
+                openInDefaultBrowserItem.CustomItemSelected += (sender, args) =>
+                {
+                    if (!string.IsNullOrWhiteSpace(currentUrl))
+                    {
+                        try
+                        {
+                            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(currentUrl) { UseShellExecute = true });
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Windows.MessageBox.Show("调用默认浏览器失败：" + ex.Message);
+                        }
+                    }
+                };
+
+                // 严格按照顺序添加
+                e.MenuItems.Add(copyUrlItem);
+                e.MenuItems.Add(openInDefaultBrowserItem);
+            };
         }
+
 
         private void Close_Click(object sender, RoutedEventArgs e)
         {
             Close();
+        }
+
+        // 新增：重写 OnClosed 方法，窗口关闭时彻底销毁底层浏览器进程
+        protected override void OnClosed(EventArgs e)
+        {
+            base.OnClosed(e);
+
+            if (PopupWebView != null)
+            {
+                PopupWebView.Dispose();
+            }
         }
     }
 }

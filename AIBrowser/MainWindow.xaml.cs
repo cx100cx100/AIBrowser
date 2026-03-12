@@ -12,11 +12,13 @@ namespace AIBrowser
 {
     public partial class MainWindow : Window
     {
+        [System.Runtime.InteropServices.DllImport("psapi.dll")]
+        private static extern int EmptyWorkingSet(IntPtr hwProc);
+
         private readonly Dictionary<string, WebView2> _webviews = new();
         private readonly List<TabItemModel> _tabs = new();
         private static SettingsWindow? _settingsWindow;
         private readonly Task<CoreWebView2Environment> _envTask = CreateEnvAsync();
-        private const int MaxAliveWebViews = 5;
         private readonly LinkedList<string> _lru = new();
         private readonly Dictionary<string, LinkedListNode<string>> _lruNodes = new();
 
@@ -193,9 +195,17 @@ namespace AIBrowser
             }
         }
 
+        private void TaskManagerBtn_Click(object sender, RoutedEventArgs e)
+        {
+            var taskManager = new TaskManagerWindow(this) { Owner = this };
+            taskManager.ShowDialog();
+        }
         private void EvictIfNeeded()
         {
-            while (_webviews.Count > MaxAliveWebViews)
+            int maxAlive = App.Config.Current.MaxAliveTabs;
+            if (maxAlive < 1) maxAlive = 1;
+
+            while (_webviews.Count > maxAlive)
             {
                 var oldest = _lru.First;
                 if (oldest == null) break;
@@ -209,16 +219,71 @@ namespace AIBrowser
                     continue;
                 }
 
-                _lru.RemoveFirst();
-                _lruNodes.Remove(idToEvict);
+                KillTab(idToEvict);
+            }
+        }
 
-                if (_webviews.TryGetValue(idToEvict, out var wv))
+        public void KillTab(string tabId)
+        {
+            if (_lruNodes.TryGetValue(tabId, out var node))
+            {
+                _lru.Remove(node);
+                _lruNodes.Remove(tabId);
+            }
+
+            if (_webviews.TryGetValue(tabId, out var wv))
+            {
+                ContentHost.Children.Remove(wv);
+                wv.Dispose();
+                _webviews.Remove(tabId);
+            }
+
+            var tab = TabList.Items.OfType<TabItemModel>().FirstOrDefault(t => t.Id == tabId);
+            if (tab != null)
+            {
+                tab.IsAlive = false;
+            }
+
+            // 【新增】深度清理内存
+            // 1. 强制 WPF 进行垃圾回收
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+
+            // 2. 强制操作系统回收当前程序的物理内存
+            try
+            {
+                EmptyWorkingSet(System.Diagnostics.Process.GetCurrentProcess().Handle);
+            }
+            catch { }
+        }
+
+        public string GetTotalMemoryUsage()
+        {
+            // 1. 获取主程序 (WPF) 的物理内存占用
+            long totalMemory = System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
+
+            try
+            {
+                // 2. 精准获取我们自己创建的 WebView2 的主进程 PID
+                var processedPids = new HashSet<uint>();
+                foreach (var wv in _webviews.Values)
                 {
-                    ContentHost.Children.Remove(wv);
-                    wv.Dispose();
-                    _webviews.Remove(idToEvict);
+                    if (wv.CoreWebView2 != null)
+                    {
+                        uint pid = wv.CoreWebView2.BrowserProcessId;
+                        if (processedPids.Add(pid)) // 避免重复计算同一个共享内核
+                        {
+                            var p = System.Diagnostics.Process.GetProcessById((int)pid);
+                            totalMemory += p.WorkingSet64;
+                        }
+                    }
                 }
             }
+            catch { }
+
+            double memoryInMB = totalMemory / 1024.0 / 1024.0;
+            return $"{memoryInMB:F1} MB";
         }
 
         private static Task<CoreWebView2Environment> CreateEnvAsync()
@@ -271,6 +336,7 @@ namespace AIBrowser
                 wv.DefaultBackgroundColor = System.Drawing.Color.White;
             }
             ContentHost.Children.Add(wv);
+            tab.IsAlive = true;
             _webviews[tab.Id] = wv;
 
             try
@@ -290,7 +356,6 @@ namespace AIBrowser
 
             try
             {
-                // 1. 新窗口请求
                 // 1. 新窗口请求（完美继承 Cookie、Session，修复死锁）
                 wv.CoreWebView2.NewWindowRequested += async (s, e) =>
                 {
@@ -329,13 +394,13 @@ namespace AIBrowser
                     Dispatcher.Invoke(() => tab.AutoTitle = wv.CoreWebView2.DocumentTitle);
                 };
 
-                // 3. 【新增】开始导航 -> 设置加载中 (转圈圈)
+                // 3. 开始导航 -> 设置加载中 (转圈圈)
                 wv.CoreWebView2.NavigationStarting += (s, e) =>
                 {
                     Dispatcher.Invoke(() => tab.IsLoading = true);
                 };
 
-                // 4. 【修改】导航完成 -> 取消加载中 + 获取图标
+                // 4. 导航完成 -> 取消加载中 + 获取图标
                 bool iconFetched = false;
                 wv.CoreWebView2.NavigationCompleted += async (s, e) =>
                 {
@@ -391,6 +456,50 @@ namespace AIBrowser
                     });
                 };
 
+                // 5. 【新增】自定义右键菜单
+                wv.CoreWebView2.ContextMenuRequested += (s, e) =>
+                {
+                    var env = wv.CoreWebView2.Environment;
+                    var currentUrl = wv.CoreWebView2.Source;
+
+                    // 创建“复制当前网址”菜单项
+                    var copyUrlItem = env.CreateContextMenuItem("复制当前网址", null, CoreWebView2ContextMenuItemKind.Command);
+                    copyUrlItem.CustomItemSelected += (sender, args) =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(currentUrl))
+                        {
+                            try
+                            {
+                                System.Windows.Clipboard.SetText(currentUrl);
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Windows.MessageBox.Show("复制网址失败：" + ex.Message);
+                            }
+                        }
+                    };
+
+                    // 创建“在默认浏览器中打开”菜单项
+                    var openInDefaultBrowserItem = env.CreateContextMenuItem("在默认浏览器中打开", null, CoreWebView2ContextMenuItemKind.Command);
+                    openInDefaultBrowserItem.CustomItemSelected += (sender, args) =>
+                    {
+                        if (!string.IsNullOrWhiteSpace(currentUrl))
+                        {
+                            try
+                            {
+                                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(currentUrl) { UseShellExecute = true });
+                            }
+                            catch (Exception ex)
+                            {
+                                System.Windows.MessageBox.Show("调用默认浏览器失败：" + ex.Message);
+                            }
+                        }
+                    };
+
+                    // 严格按照顺序添加，先添加复制网址，再添加默认浏览器打开
+                    e.MenuItems.Add(copyUrlItem);
+                    e.MenuItems.Add(openInDefaultBrowserItem);
+                };
                 // 开始导航
                 wv.CoreWebView2.Navigate(navUrl);
 
@@ -403,6 +512,10 @@ namespace AIBrowser
                 System.Windows.MessageBox.Show($"导航失败：{ex.Message}");
             }
         }
+
+
+
+
 
         private void BuildTabsFromConfig()
         {

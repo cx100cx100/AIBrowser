@@ -6,6 +6,13 @@ namespace AIBrowser.Models
     // 修改：实现 INotifyPropertyChanged 接口，支持界面自动更新
     public class TabItemModel : INotifyPropertyChanged
     {
+        private bool _isAlive;
+        public bool IsAlive
+        {
+            get => _isAlive;
+            set { _isAlive = value; OnPropertyChanged(); }
+        }
+
         public string Id { get; set; } = "";
 
         // URL 变化通常不需要通知 UI，除非你在 UI 上显示了 URL 栏

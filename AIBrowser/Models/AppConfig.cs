@@ -7,6 +7,7 @@
 
         // 新增：主题
         public string Theme { get; set; } = "Dark"; // "Dark" or "Light"
+        public int MaxAliveTabs { get; set; } = 5;
     }
 
     internal sealed class TabConfig
