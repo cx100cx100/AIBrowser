@@ -6,12 +6,11 @@
         WindowStyle="None"
         ResizeMode="CanResize"
         Background="{DynamicResource PageBg}"
-        MouseLeftButtonDown="Window_MouseLeftButtonDown"
         Icon="AIBrowser.ico">
 
     <WindowChrome.WindowChrome>
         <WindowChrome 
-            CaptionHeight="0"  
+            CaptionHeight="42"  
             ResizeBorderThickness="5"
             GlassFrameThickness="1"
             CornerRadius="0" />
@@ -133,13 +132,8 @@
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" Background="{DynamicResource TopbarBg}">
-            <DockPanel LastChildFill="True">
-                <Border Background="Transparent" DockPanel.Dock="Left" Width="200"
-                    MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                    <TextBlock Text=" " />
-                </Border>
-
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Top">
+            <Grid>
+                <StackPanel HorizontalAlignment="Right" Orientation="Horizontal" VerticalAlignment="Top">
                     <Button Style="{StaticResource CaptionButtonStyle}" Click="MinBtn_Click">
                         <TextBlock Text="&#xE921;"/>
                     </Button>
@@ -152,10 +146,7 @@
                         <TextBlock Text="&#xE8BB;"/>
                     </Button>
                 </StackPanel>
-
-                <Border Background="Transparent"
-                        MouseLeftButtonDown="TitleBar_MouseLeftButtonDown"/>
-            </DockPanel>
+            </Grid>
         </Border>
 
         <Grid Grid.Row="1">
@@ -194,6 +185,7 @@
                     </Border>
 
                     <ListBox x:Name="TabList"
+                             WindowChrome.IsHitTestVisibleInChrome="True"
                              Grid.Row="1"
                              BorderThickness="0"
                              Background="Transparent"

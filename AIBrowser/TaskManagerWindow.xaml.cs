@@ -31,7 +31,7 @@ namespace AIBrowser
 
             // 启动定时器实时刷新内存占用
             _memoryTimer = new DispatcherTimer();
-            _memoryTimer.Interval = TimeSpan.FromSeconds(2);
+            _memoryTimer.Interval = TimeSpan.FromSeconds(5);
             _memoryTimer.Tick += (s, e) => UpdateMemoryUsage();
             _memoryTimer.Start();
 

@@ -7,6 +7,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Management;
+
 
 namespace AIBrowser
 {
@@ -57,6 +59,8 @@ namespace AIBrowser
             AIBrowser.Services.ThemeService.ApplyTheme(App.Config.Current.Theme);
         }
 
+
+
         private static void UpdateWebViewTheme(WebView2 wv)
         {
             if (wv == null || wv.CoreWebView2 == null) return;
@@ -72,80 +76,6 @@ namespace AIBrowser
         {
             MaxHeight = SystemParameters.WorkArea.Height + 16;
             MaxWidth = SystemParameters.WorkArea.Width + 16;
-        }
-
-        private void TitleBar_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (e.ClickCount == 2)
-            {
-                ToggleMaximize();
-                return;
-            }
-            DragMove();
-        }
-
-        private void Window_MouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
-            {
-                DragMove();
-            }
-        }
-
-        // ==========================================================
-        // 【新增】处理最大化状态下的窗口拖拽脱离 (修复命名空间冲突)
-        // ==========================================================
-        protected override void OnMouseMove(System.Windows.Input.MouseEventArgs e)
-        {
-            base.OnMouseMove(e);
-
-            // 核心条件：鼠标左键按住拖拽，且当前窗口处于最大化状态
-            if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed && WindowState == WindowState.Maximized)
-            {
-                // 1. 获取鼠标当前在窗口内的相对坐标 (显式使用 System.Windows.Point)
-                System.Windows.Point mousePosInWindow = e.GetPosition(this);
-
-                // 2. 将相对坐标转换为屏幕物理绝对坐标 (必须在改变窗口状态之前获取)
-                System.Windows.Point screenPoint = PointToScreen(mousePosInWindow);
-
-                // 3. 处理高 DPI 缩放：将物理绝对坐标转换回 WPF 逻辑坐标
-                var source = PresentationSource.FromVisual(this);
-                if (source != null)
-                {
-                    screenPoint = source.CompositionTarget.TransformFromDevice.Transform(screenPoint);
-                }
-
-                // 4. 计算鼠标在当前最大化窗口宽度的百分比（用来保证恢复后鼠标依旧在标题栏的相对位置）
-                double ratio = mousePosInWindow.X / ActualWidth;
-
-                // 5. 将窗口恢复正常大小
-                WindowState = WindowState.Normal;
-
-                // 6. 获取恢复后的窗口宽度 (如果有缓存则用 RestoreBounds，否则用默认)
-                double restoreWidth = RestoreBounds.Width;
-                if (double.IsNaN(restoreWidth) || restoreWidth <= 0)
-                {
-                    restoreWidth = Width;
-                    if (double.IsNaN(restoreWidth) || restoreWidth <= 0)
-                    {
-                        restoreWidth = 1000; // 最终保底宽度
-                    }
-                }
-
-                // 7. 计算新位置：保持横向相对比例，纵向位置不变
-                Left = screenPoint.X - (restoreWidth * ratio);
-                Top = screenPoint.Y - mousePosInWindow.Y;
-
-                // 8. 位置调整好后，立即调用原生拖拽接管鼠标
-                try
-                {
-                    DragMove();
-                }
-                catch
-                {
-                    // 忽略可能产生的拖拽异常
-                }
-            }
         }
 
         // ==========================================================
@@ -242,6 +172,7 @@ namespace AIBrowser
             if (tab != null)
             {
                 tab.IsAlive = false;
+                tab.IsLoading = false;
             }
 
             // 【新增】深度清理内存
@@ -260,22 +191,53 @@ namespace AIBrowser
 
         public string GetTotalMemoryUsage()
         {
-            // 1. 获取主程序 (WPF) 的物理内存占用
+            // 1. 获取 WPF 主程序自身的内存占用
             long totalMemory = System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
 
             try
             {
-                // 2. 精准获取我们自己创建的 WebView2 的主进程 PID
-                var processedPids = new HashSet<uint>();
+                var browserPids = new HashSet<int>();
+
+                // 2. 获取并累加所有 WebView2 主控进程的内存，同时记录它们的 PID
                 foreach (var wv in _webviews.Values)
                 {
                     if (wv.CoreWebView2 != null)
                     {
-                        uint pid = wv.CoreWebView2.BrowserProcessId;
-                        if (processedPids.Add(pid)) // 避免重复计算同一个共享内核
+                        int pid = (int)wv.CoreWebView2.BrowserProcessId;
+                        if (browserPids.Add(pid)) // 防止同一个内核被重复计算
                         {
-                            var p = System.Diagnostics.Process.GetProcessById((int)pid);
-                            totalMemory += p.WorkingSet64;
+                            try
+                            {
+                                var p = System.Diagnostics.Process.GetProcessById(pid);
+                                totalMemory += p.WorkingSet64;
+                            }
+                            catch { }
+                        }
+                    }
+                }
+
+                // 3. 使用 WMI 查找所有从属于咱们主控进程的子进程 (GPU、渲染进程等)
+                if (browserPids.Count > 0)
+                {
+                    string query = "SELECT ProcessId, ParentProcessId FROM Win32_Process WHERE Name = 'msedgewebview2.exe'";
+                    using (var searcher = new ManagementObjectSearcher(query))
+                    using (var results = searcher.Get())
+                    {
+                        foreach (var mo in results)
+                        {
+                            int childPid = Convert.ToInt32(mo["ProcessId"]);
+                            int parentPid = Convert.ToInt32(mo["ParentProcessId"]);
+
+                            // 如果这个进程的"爸爸"在我们的主控进程列表里，那它就是咱们浏览器的财产
+                            if (browserPids.Contains(parentPid))
+                            {
+                                try
+                                {
+                                    var childProc = System.Diagnostics.Process.GetProcessById(childPid);
+                                    totalMemory += childProc.WorkingSet64;
+                                }
+                                catch { }
+                            }
                         }
                     }
                 }
@@ -319,6 +281,7 @@ namespace AIBrowser
 
             if (_webviews.TryGetValue(tab.Id, out var existing))
             {
+                tab.IsAlive = true; // 【新增】强制同步 UI 的存活状态
                 MarkWebViewUsed(tab.Id);
                 ShowOnly(existing);
                 EvictIfNeeded();
@@ -549,7 +512,9 @@ namespace AIBrowser
                     CustomTitle = cfgTab.Name ?? "",
                     AutoTitle = "未加载",
                     IconPath = string.IsNullOrWhiteSpace(cfgTab.IconPath) ? null : cfgTab.IconPath,
-                    IsLoading = false // 初始状态
+                    IsLoading = false, // 初始状态
+                    // 【新增】在模型刚创建时，立刻去查一下底层进程池里有没有这个网页的活体
+                    IsAlive = _webviews.ContainsKey(cfgTab.Id)
                 });
             }
 
